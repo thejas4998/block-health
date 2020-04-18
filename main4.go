@@ -26,6 +26,8 @@ type Block struct {
 
 var Blockchain []Block
 
+var bcServer chan []Block //channel that handles incoming blocks
+
 func calculateHash(block Block) string {
 	record := string(block.Index) + block.Timestamp + string(block.BPM) + block.PrevHash
 	h := sha256.New()
@@ -98,7 +100,6 @@ func makeMuxRouter() http.Handler {
 	muxRouter := mux.NewRouter()
 	muxRouter.HandleFunc("/", handleGetBlockchain).Methods("GET")
 	muxRouter.HandleFunc("/", handleWriteBlock).Methods("POST")
-	//muxRouter.HandleFunc("/", handlepost).Methods("POST")
 	return muxRouter
 }
 
