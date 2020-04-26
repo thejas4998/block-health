@@ -8,13 +8,18 @@ import(
 	"io"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"strconv"
 	"time"
 	"fmt"
+	"strings"
 	"github.com/davecgh/go-spew/spew"
 	"github.com/joho/godotenv"
+	"github.com/gorilla/mux"
 )
+
+const difficulty = 1
 
 // Block represents each 'item' in the blockchain
 type Block struct {
@@ -23,7 +28,50 @@ type Block struct {
 	BPM       int
 	Hash      string
 	PrevHash  string
+	Difficulty int
+    Nonce      string
 }
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//START OF NEW CODE
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+func run() error {
+	mux := makeMuxRouter()
+	httpAddr := os.Getenv("ADDR")
+	log.Println("Listening on ", os.Getenv("PORT"))
+	s := &http.Server{
+			Addr:           ":" + httpAddr,
+			Handler:        mux,
+			ReadTimeout:    10 * time.Second,
+			WriteTimeout:   10 * time.Second,
+			MaxHeaderBytes: 1 << 20,
+	}
+
+	if err := s.ListenAndServe(); err != nil {
+			return err
+	}
+
+	return nil
+}
+
+func makeMuxRouter() http.Handler {
+	muxRouter := mux.NewRouter()
+	muxRouter.HandleFunc("/", handleGetBlockchain).Methods("GET")
+	//muxRouter.HandleFunc("/", handleWriteBlock).Methods("POST")
+	return muxRouter
+}
+
+
+func handleGetBlockchain(w http.ResponseWriter, r *http.Request) {
+	bytes, err := json.MarshalIndent(Blockchain, "", "  ")
+	if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+	}
+	io.WriteString(w, string(bytes))
+}
+
 
 
 // Blockchain is a series of validated Blocks
@@ -31,9 +79,14 @@ var Blockchain []Block
 
 var bcServer chan []Block
 
+func isHashValid(hash string, difficulty int) bool {
+	prefix := strings.Repeat("0", difficulty)
+	return strings.HasPrefix(hash, prefix)
+}
+
 // SHA256 hashing
 func calculateHash(block Block) string {
-	record := string(block.Index) + block.Timestamp + string(block.BPM) + block.PrevHash
+	record := strconv.Itoa(block.Index) + block.Timestamp + strconv.Itoa(block.BPM) + block.PrevHash + block.Nonce
 	h := sha256.New()
 	h.Write([]byte(record))
 	hashed := h.Sum(nil)
@@ -41,7 +94,6 @@ func calculateHash(block Block) string {
 }
 
 func generateBlock(oldBlock Block, BPM int) (Block, error) {
-
 	var newBlock Block
 
 	t := time.Now()
@@ -50,8 +102,22 @@ func generateBlock(oldBlock Block, BPM int) (Block, error) {
 	newBlock.Timestamp = t.String()
 	newBlock.BPM = BPM
 	newBlock.PrevHash = oldBlock.Hash
-	newBlock.Hash = calculateHash(newBlock)
+	newBlock.Difficulty = difficulty
 
+	for i := 0; ; i++ {
+			hex := fmt.Sprintf("%x", i)
+			newBlock.Nonce = hex
+			if !isHashValid(calculateHash(newBlock), newBlock.Difficulty) {
+					fmt.Println(calculateHash(newBlock), " do more work!")
+					time.Sleep(time.Second)
+					continue
+			} else {
+					fmt.Println(calculateHash(newBlock), " work done!")
+					newBlock.Hash = calculateHash(newBlock)
+					break
+			}
+
+	}
 	return newBlock, nil
 }
 
@@ -104,7 +170,7 @@ func handleConn(conn net.Conn) {
 			}
 
 			if isBlockValid(newBlock, Blockchain[len(Blockchain)-1]) {
-				newBlockchain := 	end(Blockchain, newBlock)
+				newBlockchain := append(Blockchain, newBlock)
 				replaceChain(newBlockchain)
 			}
 
@@ -145,7 +211,7 @@ func main() {
 
 	// create genesis block
 	t := time.Now()
-	genesisBlock := Block{0, t.String(), 0, "", ""}
+	genesisBlock := Block{0, t.String(), 0, "", "", difficulty, ""}
 	spew.Dump(genesisBlock)
 	Blockchain = append(Blockchain, genesisBlock)
 
@@ -162,7 +228,10 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
+		
 		go handleConn(conn)
+		go run()
+		
 	}
 
 }
