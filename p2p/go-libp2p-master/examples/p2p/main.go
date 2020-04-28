@@ -37,11 +37,13 @@ type Block struct {
 	BPM       int
 	Hash      string
 	PrevHash  string
+	Difficulty int
+	Nonce 	  string
 }
 
 // Blockchain is a series of validated Blocks
 var Blockchain []Block
-
+var difficulty = 1
 var mutex = &sync.Mutex{}
 
 // make sure block is valid by checking index, and comparing the hash of the previous block
@@ -63,16 +65,17 @@ func isBlockValid(newBlock, oldBlock Block) bool {
 
 // SHA256 hashing
 func calculateHash(block Block) string {
-	record := strconv.Itoa(block.Index) + block.Timestamp + strconv.Itoa(block.BPM) + block.PrevHash
-	h := sha256.New()
-	h.Write([]byte(record))
-	hashed := h.Sum(nil)
-	return hex.EncodeToString(hashed)
+	 record := strconv.Itoa(block.Index) + block.Timestamp + strconv.Itoa(block.BPM) + block.PrevHash + block.Nonce
+	 h := sha256.New()
+	 h.Write([]byte(record))
+	 hashed := h.Sum(nil)
+	 return hex.EncodeToString(hashed)
+
+	//return "hashlmao"
 }
 
-// create a new block using previous block's hash
-func generateBlock(oldBlock Block, BPM int) Block {
-
+// // create a new block using previous block's hash
+func generateBlock(oldBlock Block, BPM int) (Block) {
 	var newBlock Block
 
 	t := time.Now()
@@ -81,9 +84,31 @@ func generateBlock(oldBlock Block, BPM int) Block {
 	newBlock.Timestamp = t.String()
 	newBlock.BPM = BPM
 	newBlock.PrevHash = oldBlock.Hash
-	newBlock.Hash = calculateHash(newBlock)
+	newBlock.Difficulty = difficulty
 
+	for i := 0; ; i++ {
+			hex := fmt.Sprintf("%x", i)
+			newBlock.Nonce = hex
+			if !isHashValid(calculateHash(newBlock), newBlock.Difficulty) {
+					fmt.Println(calculateHash(newBlock), " do more work!")
+					//time.Sleep(time.Second)
+					continue
+			} else {
+					fmt.Println(calculateHash(newBlock), " work done!")
+					newBlock.Hash = calculateHash(newBlock)
+					break
+			}
+			// newBlock.Hash = calculateHash(newBlock)
+			// break
+	}
 	return newBlock
+
+}	
+
+
+func isHashValid(hash string, difficulty int) bool {
+	prefix := strings.Repeat("0", difficulty)
+	return strings.HasPrefix(hash, prefix)
 }
 
 // makeBasicHost creates a LibP2P host with a random peer ID listening on the
@@ -246,7 +271,8 @@ func writeData(rw *bufio.ReadWriter) {
 func main() {
 	t := time.Now()
 	genesisBlock := Block{}
-	genesisBlock = Block{0, t.String(), 0, calculateHash(genesisBlock), ""}
+	genesisBlock = Block{0, t.String(), 0, calculateHash(genesisBlock), "", difficulty, ""}
+	//genesisBlock = Block{0, t.String(), 0, calculateHash(genesisBlock), ""}
 
 	Blockchain = append(Blockchain, genesisBlock)
 

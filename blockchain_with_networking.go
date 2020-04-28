@@ -104,7 +104,7 @@ func handleConn(conn net.Conn) {
 			}
 
 			if isBlockValid(newBlock, Blockchain[len(Blockchain)-1]) {
-				newBlockchain := 	end(Blockchain, newBlock)
+				newBlockchain := append(Blockchain, newBlock)
 				replaceChain(newBlockchain)
 			}
 
